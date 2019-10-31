@@ -1,7 +1,7 @@
 close all
 clear
 clc
-% --------------------------------------------------------------------
+%% --------------------------------------------------------------------
 % Load reference image
 % --------------------------------------------------------------------
 
@@ -41,7 +41,7 @@ fprintf('Number of frames (features) detected: %d\n', size(f2,2));
 h = vl_plotframe(f2);
 set(h,'color','g','linewidth',1);
 
-% --------------------------------------------------------------------
+%% --------------------------------------------------------------------
 % Extract and Match the descriptors                                                        
 % --------------------------------------------------------------------
 
@@ -69,7 +69,7 @@ for i=1:size(f2match,2)
  text(x+o,y,sprintf('%d',i), 'Color', 'r');
 end
 
-% --------------------------------------------------------------------
+%% --------------------------------------------------------------------
 % Pick random N points for DLT/Normalized DLT/ DLT + RANSAC to estimate the
 % homography
 % --------------------------------------------------------------------
@@ -81,9 +81,38 @@ H = vgg_H_from_x_lin(pts1, pts2);
 % Normalized DLT Algorithm
 H_norm = vgg_H_from_x_lin(normalise2dpts(pts1),normalise2dpts(pts2));
 
-%H2 = ransacfithomography(pts1, pts2, 0.002);
 
+%% --------------------------------------------------------------------
+%                                         RANSAC with homography model
 % --------------------------------------------------------------------
+numMatches = size(matches,2) ;
+
+X1 = f1(1:2,matches(1,:)) ; X1(3,:) = 1 ;
+X2 = f2(1:2,matches(2,:)) ; X2(3,:) = 1 ;
+clear H_ransac score ok ;
+for t = 1:100
+  % estimate homograpyh
+  subset = vl_colsubset(1:numMatches, 4) ;
+  A = [] ;
+  for i = subset
+    A = cat(1, A, kron(X1(:,i)', vl_hat(X2(:,i)))) ;
+  end
+  [U_r,S_r,V_r] = svd(A) ;
+  H_ransac{t} = reshape(V_r(:,9),3,3) ;
+  
+  % score homography
+  X2_ = H_ransac{t} * X1 ;
+  du = X2_(1,:)./X2_(3,:) - X2(1,:)./X2(3,:) ;
+  dv = X2_(2,:)./X2_(3,:) - X2(2,:)./X2(3,:) ;
+  ok{t} = (du.*du + dv.*dv) < 6*6 ;
+  score(t) = sum(ok{t}) ;
+end
+
+[score, best] = max(score) ;
+H_ransac = H_ransac{best} ;
+ok = ok{best} ;
+
+%% --------------------------------------------------------------------
 % Image Warping under DLT
 % --------------------------------------------------------------------
 
@@ -113,7 +142,7 @@ figure(4) ; clf ;
 imagesc(mosaic_DLT) ; axis image off ;
 title('Mosaic DLT') ;
 
-% --------------------------------------------------------------------
+%% --------------------------------------------------------------------
 % Image Warping under normalized DLT
 % --------------------------------------------------------------------
 
@@ -121,7 +150,7 @@ box3 = [1  size(im2,2) size(im2,2)  1 ;
         1  1           size(im2,1)  size(im2,1) ;
         1  1           1            1 ] ;
 box3_ = inv(H_norm) * box3 ;
-box3_(1,:) = box2_(1,:) ./ box2_(3,:) ;
+box3_(1,:) = box3_(1,:) ./ box3_(3,:) ;
 box3_(2,:) = box3_(2,:) ./ box3_(3,:) ;
 ur2 = min([1 box3_(1,:)]):max([size(im1,2) box3_(1,:)]) ;
 vr2 = min([1 box3_(2,:)]):max([size(im1,1) box3_(2,:)]) ;
@@ -142,3 +171,33 @@ mosaic_normDLT = (im1_norm + im2_norm) ./ mass2 ;
 figure(5) ; clf ;
 imagesc(mosaic_normDLT) ; axis image off ;
 title('Mosaic norm DLT') ;
+
+%% --------------------------------------------------------------------
+% Image Warping under DLT + RANSAC
+% --------------------------------------------------------------------
+
+box4 = [1  size(im2,2) size(im2,2)  1 ;
+        1  1           size(im2,1)  size(im2,1) ;
+        1  1           1            1 ] ;
+box4_ = inv(H_ransac) * box4 ;
+box4_(1,:) = box4_(1,:) ./ box4_(3,:) ;
+box4_(2,:) = box4_(2,:) ./ box4_(3,:) ;
+ur3 = min([1 box4_(1,:)]):max([size(im1,2) box4_(1,:)]) ;
+vr3 = min([1 box4_(2,:)]):max([size(im1,1) box4_(2,:)]) ;
+
+[u3,v3] = meshgrid(ur3,vr3) ;
+im1_ransac = vl_imwbackward(im2double(im1),u3,v3) ;
+
+z3_ = H_ransac(3,1) * u3 + H_ransac(3,2) * v3 + H_ransac(3,3) ;
+u3_ = (H_ransac(1,1) * u3 + H_ransac(1,2) * v3 + H_ransac(1,3)) ./ z3_ ;
+v3_ = (H_ransac(2,1) * u3 + H_ransac(2,2) * v3 + H_ransac(2,3)) ./ z3_ ;
+im2_ransac = vl_imwbackward(im2double(im2),u3_,v3_) ;
+
+mass3 = ~isnan(im1_ransac) + ~isnan(im2_ransac) ;
+im1_ransac(isnan(im1_ransac)) = 0 ;
+im2_ransac(isnan(im2_ransac)) = 0 ;
+mosaic_ransac = (im1_ransac + im2_ransac) ./ mass3 ;
+
+figure(6) ; clf ;
+imagesc(mosaic_ransac) ; axis image off ;
+title('Mosaic DLT RANSAC') ;
