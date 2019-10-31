@@ -3,7 +3,8 @@
 % Return: Feature Detected Images  save and will be closed
 %         Establish Correspondences save and will be close
 %         Image Warping Results
-
+%Author: Zhengqi Yang 10/31/2019
+%zhengqi@ucsb.edu
 
 function imgRegistration(Image1, Image2)
 %% --------------------------------------------------------------------
