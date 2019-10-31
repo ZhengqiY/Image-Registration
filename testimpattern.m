@@ -50,7 +50,33 @@ end
 
 % numMatches = size(matches,2);
 % 
-% pts1 = f1match([1,2],[2,4]);
-% pts2 = f2match([1,2],[2,4]);
+ pts1 = f1match([1,2],[2,4]);
+ pts2 = f2match([1,2],[2,4]);
 % 
-% H = vgg_H_from_x_lin(pts1, pts2);
+ H = vgg_H_from_x_lin(pts1, pts2);
+
+box2 = [1  size(im2,2) size(im2,2)  1 ;
+        1  1           size(im2,1)  size(im2,1) ;
+        1  1           1            1 ] ;
+box2_ = inv(H) * box2 ;
+box2_(1,:) = box2_(1,:) ./ box2_(3,:) ;
+box2_(2,:) = box2_(2,:) ./ box2_(3,:) ;
+ur = min([1 box2_(1,:)]):max([size(im1,2) box2_(1,:)]) ;
+vr = min([1 box2_(2,:)]):max([size(im1,1) box2_(2,:)]) ;
+
+[u,v] = meshgrid(ur,vr) ;
+im1_ = vl_imwbackward(im2double(im1),u,v) ;
+
+z_ = H(3,1) * u + H(3,2) * v + H(3,3) ;
+u_ = (H(1,1) * u + H(1,2) * v + H(1,3)) ./ z_ ;
+v_ = (H(2,1) * u + H(2,2) * v + H(2,3)) ./ z_ ;
+im2_ = vl_imwbackward(im2double(im2),u_,v_) ;
+
+mass = ~isnan(im1_) + ~isnan(im2_) ;
+im1_(isnan(im1_)) = 0 ;
+im2_(isnan(im2_)) = 0 ;
+mosaic = (im1_ + im2_) ./ mass ;
+
+figure(4) ; clf ;
+imagesc(mosaic) ; axis image off ;
+title('Mosaic') ;
